@@ -1,0 +1,42 @@
+"""Builder Docplex da formulação vehicle-flow de três índices."""
+
+from itertools import combinations
+from typing import Any
+
+from docplex.mp.model import Model
+
+from architecture_example.domain import InstanceData
+
+
+class CVRPBuilder:
+    """Constrói a formulação vehicle-flow da seção 3, com cortes DFJ."""
+
+    def __init__(self, data: InstanceData):
+        self.data = data
+        self.model = Model(name="cvrp", ignore_names=True, checker="off")
+        self.x: dict[tuple[int, int, int], Any] = {}
+        self.y: dict[tuple[int, int], Any] = {}
+
+    def build(self) -> Model:
+        self.x = self.model.binary_var_dict(self.data.valid_ijk, name=None)
+        indices = [(i, k) for i in range(len(self.data.nodes)) for k in range(len(self.data.vehicles))]
+        self.y = self.model.binary_var_dict(indices, name=None)
+        self._add_constraints()
+        variable_cost = self.model.sum(self.data.cost[key] * variable for key, variable in self.x.items())
+        fixed_cost = self.data.fixed_vehicle_cost * self.model.sum(self.y[0, k] for k in range(len(self.data.vehicles)))
+        self.model.minimize(variable_cost + fixed_cost)
+        return self.model
+
+    def _add_constraints(self) -> None:
+        data, model = self.data, self.model
+        vehicles = range(len(data.vehicles))
+        nodes = range(len(data.nodes))
+        model.add_constraints(model.sum(self.y[i, k] for k in vehicles) == 1 for i in data.demand_kg)
+        model.add_constraint(model.sum(self.y[0, k] for k in vehicles) <= len(data.vehicles))
+        model.add_constraints(model.sum(self.x[i, j, k] for j in nodes if (i, j, k) in self.x) == self.y[i, k] for i in nodes for k in vehicles)
+        model.add_constraints(model.sum(self.x[i, j, k] for i in nodes if (i, j, k) in self.x) == self.y[j, k] for j in nodes for k in vehicles)
+        model.add_constraints(model.sum(data.demand_kg[i] * self.y[i, k] for i in data.demand_kg) <= data.vehicles[k].capacity_kg for k in vehicles)
+        model.add_constraints(model.sum(data.demand_m3[i] * self.y[i, k] for i in data.demand_m3) <= data.vehicles[k].capacity_m3 for k in vehicles)
+        for size in range(2, len(data.demand_kg) + 1):
+            for subset in combinations(data.demand_kg, size):
+                model.add_constraints(model.sum(self.x[i, j, k] for i in subset for j in subset if (i, j, k) in self.x) <= len(subset) - 1 for k in vehicles)

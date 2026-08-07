@@ -11,6 +11,24 @@ dependencies = [
     "docplex>=2.32.264",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.12",
+]
+
+[tool.pytest.ini_options]
+addopts = "--cov=architecture_example --cov-report=term-missing --cov-fail-under=80"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["F", "I", "B", "UP"]
+
 [project.scripts]
 architecture-example = "architecture_example:main"
 
