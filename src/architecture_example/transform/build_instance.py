@@ -6,6 +6,7 @@ from math import asin, cos, radians, sin, sqrt
 from typing import Any
 
 from architecture_example.domain import InstanceData, Vehicle
+from architecture_example.instrumentation import log_execution_time
 
 
 class InputError(ValueError):
@@ -20,6 +21,7 @@ class InstanceTransformer:
         self.cd = cd
         self.delivery_date = delivery_date or raw["metadata"]["data_referencia"]
 
+    @log_execution_time
     def transform(self) -> InstanceData:
         """Retorna a instância concreta pronta para o builder."""
         depot = _find_by_code(self.raw["centros_distribuicao"], self.cd)

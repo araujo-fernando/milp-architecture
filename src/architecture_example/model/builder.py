@@ -6,6 +6,7 @@ from typing import Any
 from docplex.mp.model import Model
 
 from architecture_example.domain import InstanceData
+from architecture_example.instrumentation import log_execution_time
 
 
 class CVRPBuilder:
@@ -17,6 +18,7 @@ class CVRPBuilder:
         self.x: dict[tuple[int, int, int], Any] = {}
         self.y: dict[tuple[int, int], Any] = {}
 
+    @log_execution_time
     def build(self) -> Model:
         self.x = self.model.binary_var_dict(self.data.valid_ijk, name=None)
         indices = [(i, k) for i in range(len(self.data.nodes)) for k in range(len(self.data.vehicles))]
@@ -27,6 +29,7 @@ class CVRPBuilder:
         self.model.minimize(variable_cost + fixed_cost)
         return self.model
 
+    @log_execution_time
     def _add_constraints(self) -> None:
         data, model = self.data, self.model
         vehicles = range(len(data.vehicles))

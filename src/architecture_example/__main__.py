@@ -4,10 +4,13 @@ import argparse
 import json
 from pathlib import Path
 
+from .instrumentation import configure_logging, log_execution_time
 from .pipeline import CVRPPipeline
 
 
+@log_execution_time
 def main() -> None:
+    configure_logging()
     parser = argparse.ArgumentParser(description="Resolve uma instância CVRP em JSON.")
     parser.add_argument("input", type=Path)
     parser.add_argument("cd")

@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "docplex>=2.32.264",
+    "rich>=13.0",
 ]
 
 [dependency-groups]

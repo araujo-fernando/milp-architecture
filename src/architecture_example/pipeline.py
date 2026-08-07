@@ -3,6 +3,7 @@
 from time import perf_counter
 from typing import Any
 
+from .instrumentation import log_execution_time
 from .model import CVRPBuilder
 from .report import SolutionReporter
 from .solve import CVRPSolver
@@ -15,11 +16,12 @@ class CVRPPipeline:
     def __init__(self, raw: dict[str, Any], cd: str, delivery_date: str | None = None):
         self.transformer = InstanceTransformer(raw, cd, delivery_date)
 
+    @log_execution_time
     def run(self) -> dict[str, Any]:
         """Executa Transform → Build → Solve → Extract."""
-        started = perf_counter()
         data = self.transformer.transform()
         builder = CVRPBuilder(data)
+        started = perf_counter()
         builder.build()
         built = perf_counter()
         solution = CVRPSolver(builder.model).solve()
