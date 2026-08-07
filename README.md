@@ -29,3 +29,13 @@ uv run pytest
 ```
 
 Os testes verificam transformação, validações, esparsidade e construção da formulação de três índices, com cobertura mínima configurada em 80%.
+
+## Benchmark
+
+O script na raiz gera uma entrada sintética, a grava no caminho informado e executa o pipeline completo, exibindo os tempos de escrita, pipeline e total:
+
+```bash
+uv run python benchmark.py 20 4 data/benchmark-input.json
+```
+
+Os argumentos são, nesta ordem: quantidade de clientes, quantidade de veículos e caminho do JSON de entrada. A execução requer runtime CPLEX compatível.
