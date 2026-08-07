@@ -1,0 +1,17 @@
+[project]
+name = "architecture-example"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Fernando Araujo", email = "contato@fernando.bhz.br" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+architecture-example = "architecture_example:main"
+
+[build-system]
+requires = ["uv_build>=0.11.17,<0.12.0"]
+build-backend = "uv_build"
