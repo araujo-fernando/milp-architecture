@@ -18,7 +18,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     result = CVRPPipeline(json.loads(args.input.read_text(encoding="utf-8")), args.cd, args.date).run()
-    text = json.dumps(result, ensure_ascii=False, indent=2)
+    text = json.dumps(result, ensure_ascii=False, indent=4)
     if args.output:
         args.output.write_text(text, encoding="utf-8")
     else:

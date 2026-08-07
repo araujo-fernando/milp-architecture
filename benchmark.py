@@ -41,7 +41,7 @@ def main() -> None:
     data = create_input(args.customers, args.vehicles)
     write_started = perf_counter()
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    args.output.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
     write_seconds = perf_counter() - write_started
     pipeline_started = perf_counter()
     result = CVRPPipeline(data, "CD-BENCH").run()
