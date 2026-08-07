@@ -7,7 +7,9 @@ authors = [
     { name = "Fernando Araujo", email = "contato@fernando.bhz.br" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "docplex>=2.32.264",
+]
 
 [project.scripts]
 architecture-example = "architecture_example:main"
