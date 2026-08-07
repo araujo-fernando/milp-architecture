@@ -7,8 +7,12 @@ O pipeline separa a transformação dos dados de negócio da construção do mod
 ## Uso
 
 ```bash
-uv run python -m architecture_example entrada.json CD-BH01 --output solucao.json
+uv run python -m architecture_example caminho/do/cenario CD-BH01
 ```
+
+O diretório de cenário contém todos os artefatos da execução: a entrada deve estar
+em `input.json`; a solução é gravada em `output.json`; e os logs em `execution.log`.
+Use `--cplex-log` para exibir a saída do CPLEX durante a resolução; por padrão ela fica desativada.
 
 É necessário um runtime CPLEX compatível para resolver. A construção do modelo pode ser usada independentemente:
 
@@ -35,7 +39,7 @@ Os testes verificam transformação, validações, esparsidade e construção da
 O script na raiz gera uma entrada sintética, a grava no caminho informado e executa o pipeline completo, exibindo os tempos de escrita, pipeline e total:
 
 ```bash
-uv run python benchmark.py 20 4 data/benchmark-input.json
+uv run python benchmark.py 20 4
 ```
 
-Os argumentos são, nesta ordem: quantidade de clientes, quantidade de veículos e caminho do JSON de entrada. A execução requer runtime CPLEX compatível.
+Os argumentos são, nesta ordem: quantidade de clientes e quantidade de veículos. O benchmark grava `input.json`, `output.json` e `execution.log` em `data/<clientes>c-<veículos>v`; por exemplo, `data/20c-4v`. Use `--cplex-log` para exibir a saída do CPLEX. A execução requer runtime CPLEX compatível.

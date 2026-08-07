@@ -12,15 +12,19 @@ from typing import Any, cast
 from rich.logging import RichHandler
 
 
-def configure_logging(log_path: Path = Path("outputs/execution.log")) -> None:
+def configure_logging(log_path: Path = Path("execution.log"), *, force: bool = False) -> None:
     """Configura logs para o terminal e para o arquivo de execução."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger("architecture_example")
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
-    if logger.handlers:
+    if logger.handlers and not force:
         return
+    if force:
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+            handler.close()
 
     formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
     file_handler = logging.FileHandler(log_path, encoding="utf-8")

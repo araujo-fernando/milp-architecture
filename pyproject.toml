@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "cplex==22.2.0.0",
     "docplex>=2.32.264",
     "rich>=13.0",
 ]

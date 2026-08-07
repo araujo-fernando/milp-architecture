@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from architecture_example import __main__ as cli
 from architecture_example.model import CVRPBuilder
 from architecture_example.pipeline import CVRPPipeline
 from architecture_example.solve import CVRPSolver
 from architecture_example.transform import InputError, InstanceTransformer
+from benchmark import create_input
 
 
 @pytest.fixture
@@ -61,6 +65,15 @@ def test_builder_creates_three_index_model_with_dfj_constraints(raw: dict) -> No
     assert model.number_of_constraints > 20
 
 
+@pytest.mark.parametrize(("customers", "expected_variables"), [(1, 4), (3, 16), (5, 36)])
+def test_model_size_scales_with_customer_count(customers: int, expected_variables: int) -> None:
+    """A complete one-vehicle graph has n(n + 1) arc vars and n + 1 assignment vars."""
+    data = InstanceTransformer(create_input(customers, vehicles=1), "CD-BENCH").transform()
+    model = CVRPBuilder(data).build()
+
+    assert model.number_of_variables == expected_variables
+
+
 def test_invalid_sku_and_insufficient_capacity_are_rejected(raw: dict) -> None:
     raw["pedidos"][0]["itens"][0]["sku"] = "MISSING"
     with pytest.raises(InputError, match="SKU"):
@@ -84,7 +97,8 @@ def test_unknown_or_inactive_depot_is_rejected(raw: dict) -> None:
 
 def test_solver_returns_solution_or_clear_error() -> None:
     class Model:
-        def solve(self, **_: object) -> object:
+        def solve(self, **kwargs: object) -> object:
+            assert kwargs == {"log_output": False}
             return "solution"
 
     assert CVRPSolver(Model()).solve() == "solution"
@@ -99,7 +113,9 @@ def test_solver_returns_solution_or_clear_error() -> None:
 
 def test_pipeline_orchestrates_layers(raw: dict, monkeypatch: pytest.MonkeyPatch) -> None:
     class Builder:
-        model = object()
+        class model:
+            number_of_variables = 1
+            number_of_constraints = 2
 
         def __init__(self, data: object) -> None:
             self.data = data
@@ -115,8 +131,8 @@ def test_pipeline_orchestrates_layers(raw: dict, monkeypatch: pytest.MonkeyPatch
             return "data"
 
     class Solver:
-        def __init__(self, _: object) -> None:
-            pass
+        def __init__(self, _: object, *, cplex_log: bool = False) -> None:
+            self.cplex_log = cplex_log
 
         def solve(self) -> str:
             return "solution"
@@ -134,3 +150,28 @@ def test_pipeline_orchestrates_layers(raw: dict, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr("architecture_example.pipeline.SolutionReporter", Reporter)
 
     assert CVRPPipeline(raw, "CD").run() == {"ok": "data"}
+
+
+@pytest.mark.parametrize(("extra_args", "cplex_log"), [([], False), (["--cplex-log"], True)])
+def test_cli_keeps_scenario_artifacts_together(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, extra_args: list[str], cplex_log: bool
+) -> None:
+    scenario = tmp_path / "scenario"
+    scenario.mkdir()
+    (scenario / "input.json").write_text(json.dumps({"input": True}), encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    class Pipeline:
+        def __init__(self, raw: dict, cd: str, date: str | None, *, cplex_log: bool = False) -> None:
+            captured.update(raw=raw, cd=cd, date=date, cplex_log=cplex_log)
+
+        def run(self) -> dict[str, bool]:
+            return {"solved": True}
+
+    monkeypatch.setattr(cli, "CVRPPipeline", Pipeline)
+    monkeypatch.setattr("sys.argv", ["architecture-example", str(scenario), "CD", "--date", "2026-08-07", *extra_args])
+    cli.main()
+
+    assert captured == {"raw": {"input": True}, "cd": "CD", "date": "2026-08-07", "cplex_log": cplex_log}
+    assert json.loads((scenario / "output.json").read_text(encoding="utf-8")) == {"solved": True}
+    assert (scenario / "execution.log").exists()
