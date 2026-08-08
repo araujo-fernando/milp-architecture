@@ -39,19 +39,22 @@ def main() -> None:
     args = parse_args()
     scenario_path = Path("data") / f"{args.customers}c-{args.vehicles}v"
     input_path = scenario_path / "input.json"
-    output_path = scenario_path / "output.json"
     inst.configure(scenario_path / "execution.log", force=True)
     with inst.measure("benchmark completo") as total_measurement:
         data = create_input(args.customers, args.vehicles)
+
         with inst.measure("gravação da entrada") as write_measurement:
             scenario_path.mkdir(parents=True, exist_ok=True)
             input_path.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
+
         with inst.measure("pipeline CPLEX") as cplex_pipeline_measurement:
             cplex_result = CVRPPipeline(data, "CD-BENCH", builder="cplex", cplex_log=args.cplex_log).run()
-        with inst.measure("pipeline Docplex") as docplex_pipeline_measurement:
-            result = CVRPPipeline(data, "CD-BENCH", builder="docplex", cplex_log=args.cplex_log).run()
-        output_path.write_text(json.dumps(result, ensure_ascii=False, indent=4), encoding="utf-8")
 
+        with inst.measure("pipeline Docplex") as docplex_pipeline_measurement:
+            docplex_result = CVRPPipeline(data, "CD-BENCH", builder="docplex", cplex_log=args.cplex_log).run()
+
+        scenario_path.joinpath("output_cplex.json").write_text(json.dumps(cplex_result, ensure_ascii=False, indent=4), encoding="utf-8")
+        scenario_path.joinpath("output_docplex.json").write_text(json.dumps(docplex_result, ensure_ascii=False, indent=4), encoding="utf-8")
 
     print(f"\ncplex_pipeline_s: {cplex_pipeline_measurement.elapsed_seconds:.4f}")
     print(f"docplex_pipeline_s: {docplex_pipeline_measurement.elapsed_seconds:.4f}")
