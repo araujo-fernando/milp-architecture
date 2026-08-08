@@ -45,8 +45,11 @@ class CVRPBuilder:
         vehicles_capacity_kg = {k: vehicle.capacity_kg for k, vehicle in enumerate(data.vehicles)}
         vehicles_capacity_m3 = {k: vehicle.capacity_m3 for k, vehicle in enumerate(data.vehicles)}
 
-        vehicles = range(len(vehicles_capacity_kg))
-        nodes = range(len(data.nodes))
+        vehicle_count = len(vehicles_capacity_kg)
+        node_count = len(data.nodes)
+        customer_count = len(demand_kg)
+        vehicles = range(vehicle_count)
+        nodes = range(node_count)
 
         y = self.y
         x = self.x
@@ -56,7 +59,7 @@ class CVRPBuilder:
             model.add_constraints(msum(y[i, k] for k in vehicles) == 1 for i in demand_kg)
 
         with inst.measure("R2"):
-            model.add_constraint(msum(y[0, k] for k in vehicles) <= len(vehicles_capacity_kg))
+            model.add_constraint(msum(y[0, k] for k in vehicles) <= vehicle_count)
 
         with inst.measure("R3"):
             model.add_constraints(
@@ -80,8 +83,8 @@ class CVRPBuilder:
 
         with inst.measure("R7"):
             model.add_constraints(
-                msum(x[i, j, k] for i in subset for j in subset if (i, j, k) in x) <= len(subset) - 1
-                for size in range(2, len(demand_kg) + 1)
+                msum(x[i, j, k] for i in subset for j in subset if (i, j, k) in x) <= size - 1
+                for size in range(2, customer_count + 1)
                 for subset in combinations(demand_kg, size)
                 for k in vehicles
             )
