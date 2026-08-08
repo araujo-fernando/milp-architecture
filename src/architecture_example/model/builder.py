@@ -1,7 +1,8 @@
 """Builders da formulação vehicle-flow de três índices."""
 
 from collections.abc import Iterable
-from itertools import combinations
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from itertools import batched, combinations, islice
 from typing import Any
 
 from cplex import Cplex, SparsePair
@@ -9,6 +10,11 @@ from docplex.mp.model import Model
 
 from architecture_example.domain import InstanceData
 from architecture_example.instrumentation import Instrumentation as inst
+from architecture_example.model.constraint_generation import generate_subtour_indices, initialize_subtour_worker
+
+MAX_CONSTRAINT_WORKERS = 4
+# Below this point, process startup and serialization exceed the saved CPU time.
+_MIN_PARALLEL_SUBTOUR_ROWS = 40_000
 
 
 class CVRPBuilderDocplex:
@@ -204,18 +210,71 @@ class CVRPBuilderCplex:
             )
 
         with inst.measure("R7"):
-            rows = (
-                (
-                    SparsePair(ind=indices, val=[1.0] * len(indices)),
-                    "L",
-                    float(size - 1),
-                )
+            rows = self._subtour_rows(demand_kg, customer_count, vehicles, x)
+            self._add_rows(rows)
+
+    def _subtour_rows(
+        self,
+        demand_kg: dict[int, float],
+        customer_count: int,
+        vehicles: range,
+        x: dict[tuple[int, int, int], int],
+    ) -> Iterable[tuple[SparsePair, str, float]]:
+        """Gera R7 em paralelo quando o custo de iniciar workers é amortizado."""
+        vehicle_indices = tuple(vehicles)
+        subset_count = (1 << customer_count) - customer_count - 1
+        row_count = subset_count * len(vehicle_indices)
+        if row_count < _MIN_PARALLEL_SUBTOUR_ROWS:
+            return (
+                (SparsePair(ind=indices, val=[1.0] * len(indices)), "L", float(size - 1))
                 for size in range(2, customer_count + 1)
                 for subset in combinations(demand_kg, size)
-                for k in vehicles
+                for k in vehicle_indices
                 for indices in ([x[i, j, k] for i in subset for j in subset if (i, j, k) in x],)
             )
-            self._add_rows(rows)
+
+        subset_batch_size = max(1, self._ROW_BATCH_SIZE // len(vehicle_indices))
+        batch_count = -(-subset_count // subset_batch_size)
+        worker_count = min(MAX_CONSTRAINT_WORKERS, batch_count)
+        subset_batches = batched(
+            ((size, subset) for size in range(2, customer_count + 1) for subset in combinations(demand_kg, size)),
+            subset_batch_size,
+            strict=False,
+        )
+        return self._parallel_subtour_rows(subset_batches, vehicle_indices, x, worker_count)
+
+    @staticmethod
+    def _parallel_subtour_rows(
+        subset_batches: Iterable[tuple[tuple[int, tuple[int, ...]], ...]],
+        vehicles: tuple[int, ...],
+        x: dict[tuple[int, int, int], int],
+        worker_count: int,
+    ) -> Iterable[tuple[SparsePair, str, float]]:
+        with ProcessPoolExecutor(
+            max_workers=worker_count,
+            initializer=initialize_subtour_worker,
+            initargs=(x,),
+        ) as executor:
+            batch_iterator = iter(subset_batches)
+            pending = {
+                executor.submit(generate_subtour_indices, batch, vehicles)
+                for batch in islice(batch_iterator, worker_count)
+            }
+            while pending:
+                completed, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in completed:
+                    try:
+                        next_batch = next(batch_iterator)
+                    except StopIteration:
+                        pass
+                    else:
+                        pending.add(executor.submit(generate_subtour_indices, next_batch, vehicles))
+
+                    indexed_rows = future.result()
+                    yield from (
+                        (SparsePair(ind=indices, val=[1.0] * len(indices)), "L", bound)
+                        for indices, bound in indexed_rows
+                    )
 
     def _add_rows(self, rows: Iterable[tuple[SparsePair, str, float]]) -> None:
         """Envia restrições ao CPLEX em lotes para limitar o uso de memória."""
