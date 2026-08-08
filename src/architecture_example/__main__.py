@@ -4,11 +4,11 @@ import argparse
 import json
 from pathlib import Path
 
-from .instrumentation import configure_logging, log_execution_time
+from .instrumentation import Instrumentation as inst
 from .pipeline import CVRPPipeline
 
 
-@log_execution_time
+@inst.log_execution_time
 def run(input_path: Path, cd: str, date: str | None, output_path: Path, cplex_log: bool = False) -> None:
     """Resolve the scenario and writes its result alongside the input."""
     result = CVRPPipeline(json.loads(input_path.read_text(encoding="utf-8")), cd, date, cplex_log=cplex_log).run()
@@ -24,7 +24,7 @@ def main() -> None:
     args = parser.parse_args()
 
     scenario_path = args.path
-    configure_logging(scenario_path / "execution.log", force=True)
+    inst.configure(scenario_path / "execution.log", force=True)
     run(scenario_path / "input.json", args.cd, args.date, scenario_path / "output.json", args.cplex_log)
 
 

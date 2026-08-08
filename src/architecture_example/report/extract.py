@@ -5,7 +5,7 @@ from hashlib import sha256
 from typing import Any
 
 from architecture_example.domain import InstanceData
-from architecture_example.instrumentation import log_execution_time
+from architecture_example.instrumentation import Instrumentation as inst
 from architecture_example.model import CVRPBuilder
 
 
@@ -19,7 +19,7 @@ class SolutionReporter:
         self.build_seconds = build_seconds
         self.solve_seconds = solve_seconds
 
-    @log_execution_time
+    @inst.log_execution_time
     def extract(self) -> dict[str, Any]:
         """Retorna o envelope de execução, KPIs e rotas."""
         values = self.solution.get_value_dict(self.builder.x, keep_zeros=False)

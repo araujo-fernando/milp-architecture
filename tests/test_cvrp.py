@@ -5,6 +5,7 @@ import json
 import pytest
 
 from architecture_example import __main__ as cli
+from architecture_example.instrumentation import Instrumentation as inst
 from architecture_example.model import CVRPBuilder
 from architecture_example.pipeline import CVRPPipeline
 from architecture_example.solve import CVRPSolver
@@ -109,6 +110,22 @@ def test_solver_returns_solution_or_clear_error() -> None:
 
     with pytest.raises(RuntimeError, match="Solver"):
         CVRPSolver(InfeasibleModel()).solve()
+
+
+def test_instrumentation_times_blocks_and_decorated_calls(tmp_path) -> None:
+    inst.configure(tmp_path / "execution.log", force=True)
+
+    with inst.measure("bloco de teste") as measurement:
+        pass
+
+    @inst.log_execution_time
+    def add(left: int, right: int) -> int:
+        return left + right
+
+    assert measurement.elapsed_seconds >= 0
+    assert add(1, 2) == 3
+    assert add.__name__ == "add"
+    assert "bloco de teste" in (tmp_path / "execution.log").read_text(encoding="utf-8")
 
 
 def test_pipeline_orchestrates_layers(raw: dict, monkeypatch: pytest.MonkeyPatch) -> None:

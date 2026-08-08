@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from architecture_example.instrumentation import log_execution_time
+from architecture_example.instrumentation import Instrumentation as inst
 
 
 class CVRPSolver:
@@ -12,7 +12,7 @@ class CVRPSolver:
         self.model = model
         self.cplex_log = cplex_log
 
-    @log_execution_time
+    @inst.log_execution_time
     def solve(self) -> Any:
         """Resolve o modelo e retorna a solução encontrada."""
         solution = self.model.solve(log_output=self.cplex_log)

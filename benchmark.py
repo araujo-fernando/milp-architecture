@@ -6,10 +6,9 @@ import argparse
 import json
 from math import cos, pi, sin
 from pathlib import Path
-from time import perf_counter
 
 from architecture_example import CVRPPipeline
-from architecture_example.instrumentation import configure_logging
+from architecture_example.instrumentation import Instrumentation as inst
 
 
 def parse_args() -> argparse.Namespace:
@@ -41,22 +40,20 @@ def main() -> None:
     scenario_path = Path("data") / f"{args.customers}c-{args.vehicles}v"
     input_path = scenario_path / "input.json"
     output_path = scenario_path / "output.json"
-    configure_logging(scenario_path / "execution.log", force=True)
-    total_started = perf_counter()
-    data = create_input(args.customers, args.vehicles)
-    write_started = perf_counter()
-    scenario_path.mkdir(parents=True, exist_ok=True)
-    input_path.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
-    write_seconds = perf_counter() - write_started
-    pipeline_started = perf_counter()
-    result = CVRPPipeline(data, "CD-BENCH", cplex_log=args.cplex_log).run()
-    pipeline_seconds = perf_counter() - pipeline_started
-    output_path.write_text(json.dumps(result, ensure_ascii=False, indent=4), encoding="utf-8")
+    inst.configure(scenario_path / "execution.log", force=True)
+    with inst.measure("benchmark completo") as total_measurement:
+        data = create_input(args.customers, args.vehicles)
+        with inst.measure("gravação da entrada") as write_measurement:
+            scenario_path.mkdir(parents=True, exist_ok=True)
+            input_path.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
+        with inst.measure("pipeline") as pipeline_measurement:
+            result = CVRPPipeline(data, "CD-BENCH", cplex_log=args.cplex_log).run()
+        output_path.write_text(json.dumps(result, ensure_ascii=False, indent=4), encoding="utf-8")
     print(f"input: {input_path}")
     print(f"output: {output_path}")
-    print(f"write_s: {write_seconds:.4f}")
-    print(f"pipeline_s: {pipeline_seconds:.4f}")
-    print(f"total_s: {perf_counter() - total_started:.4f}")
+    print(f"write_s: {write_measurement.elapsed_seconds:.4f}")
+    print(f"pipeline_s: {pipeline_measurement.elapsed_seconds:.4f}")
+    print(f"total_s: {total_measurement.elapsed_seconds:.4f}")
     print(f"objective: {result['status_solver']['objetivo']:.2f}")
 
 

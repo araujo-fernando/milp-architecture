@@ -1,16 +1,12 @@
 """Orquestra Transform → Build → Solve → Extract."""
 
-import logging
-from time import perf_counter
 from typing import Any
 
-from .instrumentation import log_execution_time
+from .instrumentation import Instrumentation as inst
 from .model import CVRPBuilder
 from .report import SolutionReporter
 from .solve import CVRPSolver
 from .transform import InstanceTransformer
-
-logger = logging.getLogger("architecture_example")
 
 
 class CVRPPipeline:
@@ -20,18 +16,18 @@ class CVRPPipeline:
         self.transformer = InstanceTransformer(raw, cd, delivery_date)
         self.cplex_log = cplex_log
 
-    @log_execution_time
+    @inst.log_execution_time
     def run(self) -> dict[str, Any]:
         """Executa Transform → Build → Solve → Extract."""
         data = self.transformer.transform()
         builder = CVRPBuilder(data)
-        started = perf_counter()
-        builder.build()
-        built = perf_counter()
-        logger.info(
+        with inst.measure("construção do modelo") as build_measurement:
+            builder.build()
+        inst.info(
             "Modelo construído com %d variáveis e %d restrições",
             builder.model.number_of_variables,
             builder.model.number_of_constraints,
         )
-        solution = CVRPSolver(builder.model, cplex_log=self.cplex_log).solve()
-        return SolutionReporter(data, builder, solution, built - started, perf_counter() - built).extract()
+        with inst.measure("resolução do modelo") as solve_measurement:
+            solution = CVRPSolver(builder.model, cplex_log=self.cplex_log).solve()
+        return SolutionReporter(data, builder, solution, build_measurement.elapsed_seconds, solve_measurement.elapsed_seconds).extract()
