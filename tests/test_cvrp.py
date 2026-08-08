@@ -6,7 +6,7 @@ import pytest
 
 from architecture_example import __main__ as cli
 from architecture_example.instrumentation import Instrumentation as inst
-from architecture_example.model import CVRPBuilder
+from architecture_example.model import CVRPBuilderCplex, CVRPBuilderDocplex
 from architecture_example.pipeline import CVRPPipeline
 from architecture_example.solve import CVRPSolver
 from architecture_example.transform import InputError, InstanceTransformer
@@ -57,7 +57,7 @@ def test_transform_applies_business_rules_and_sparse_arcs(raw: dict) -> None:
 
 
 def test_builder_creates_three_index_model_with_dfj_constraints(raw: dict) -> None:
-    builder = CVRPBuilder(InstanceTransformer(raw, "CD").transform())
+    builder = CVRPBuilderDocplex(InstanceTransformer(raw, "CD").transform())
     model = builder.build()
 
     assert len(builder.x) == len(builder.data.valid_ijk)
@@ -66,11 +66,28 @@ def test_builder_creates_three_index_model_with_dfj_constraints(raw: dict) -> No
     assert model.number_of_constraints > 20
 
 
+def test_cplex_builder_creates_the_same_model_size(raw: dict) -> None:
+    data = InstanceTransformer(raw, "CD").transform()
+    docplex_model = CVRPBuilderDocplex(data).build()
+    cplex_builder = CVRPBuilderCplex(data)
+    cplex_model = cplex_builder.build()
+
+    assert cplex_model.variables.get_num() == docplex_model.number_of_variables
+    assert cplex_model.linear_constraints.get_num() == docplex_model.number_of_constraints
+
+
+def test_pipeline_runs_with_cplex_builder() -> None:
+    result = CVRPPipeline(create_input(customers=2, vehicles=1), "CD-BENCH", builder="cplex").run()
+
+    assert result["status_solver"]["num_variaveis"] == 9
+    assert result["status_solver"]["num_restricoes"] == 12
+
+
 @pytest.mark.parametrize(("customers", "expected_variables"), [(1, 4), (3, 16), (5, 36)])
 def test_model_size_scales_with_customer_count(customers: int, expected_variables: int) -> None:
     """A complete one-vehicle graph has n(n + 1) arc vars and n + 1 assignment vars."""
     data = InstanceTransformer(create_input(customers, vehicles=1), "CD-BENCH").transform()
-    model = CVRPBuilder(data).build()
+    model = CVRPBuilderDocplex(data).build()
 
     assert model.number_of_variables == expected_variables
 
@@ -162,7 +179,7 @@ def test_pipeline_orchestrates_layers(raw: dict, monkeypatch: pytest.MonkeyPatch
             return {"ok": self.args[0]}
 
     monkeypatch.setattr("architecture_example.pipeline.InstanceTransformer", Transformer)
-    monkeypatch.setattr("architecture_example.pipeline.CVRPBuilder", Builder)
+    monkeypatch.setattr("architecture_example.pipeline.CVRPBuilderDocplex", Builder)
     monkeypatch.setattr("architecture_example.pipeline.CVRPSolver", Solver)
     monkeypatch.setattr("architecture_example.pipeline.SolutionReporter", Reporter)
 

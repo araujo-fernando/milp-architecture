@@ -46,15 +46,16 @@ def main() -> None:
         with inst.measure("gravação da entrada") as write_measurement:
             scenario_path.mkdir(parents=True, exist_ok=True)
             input_path.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
-        with inst.measure("pipeline") as pipeline_measurement:
-            result = CVRPPipeline(data, "CD-BENCH", cplex_log=args.cplex_log).run()
+        with inst.measure("pipeline CPLEX") as cplex_pipeline_measurement:
+            cplex_result = CVRPPipeline(data, "CD-BENCH", builder="cplex", cplex_log=args.cplex_log).run()
+        with inst.measure("pipeline Docplex") as docplex_pipeline_measurement:
+            result = CVRPPipeline(data, "CD-BENCH", builder="docplex", cplex_log=args.cplex_log).run()
         output_path.write_text(json.dumps(result, ensure_ascii=False, indent=4), encoding="utf-8")
-    print(f"input: {input_path}")
-    print(f"output: {output_path}")
-    print(f"write_s: {write_measurement.elapsed_seconds:.4f}")
-    print(f"pipeline_s: {pipeline_measurement.elapsed_seconds:.4f}")
-    print(f"total_s: {total_measurement.elapsed_seconds:.4f}")
-    print(f"objective: {result['status_solver']['objetivo']:.2f}")
+
+
+    print(f"\ncplex_pipeline_s: {cplex_pipeline_measurement.elapsed_seconds:.4f}")
+    print(f"docplex_pipeline_s: {docplex_pipeline_measurement.elapsed_seconds:.4f}")
+    print(f"docplex/cplex_ratio: {docplex_pipeline_measurement.elapsed_seconds/cplex_pipeline_measurement.elapsed_seconds:.4f}")
 
 
 if __name__ == "__main__":

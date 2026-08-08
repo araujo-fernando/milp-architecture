@@ -1,5 +1,5 @@
 """Construção estática do modelo de otimização."""
 
-from .builder import CVRPBuilder
+from .builder import CVRPBuilderCplex, CVRPBuilderDocplex
 
-__all__ = ["CVRPBuilder"]
+__all__ = ["CVRPBuilderCplex", "CVRPBuilderDocplex"]
