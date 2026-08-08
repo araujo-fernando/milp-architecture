@@ -20,19 +20,32 @@ class CVRPBuilder:
 
     @inst.log_execution_time
     def build(self) -> Model:
-        self.x = self.model.binary_var_dict(self.data.valid_ijk, name=None)
-        indices = [(i, k) for i in range(len(self.data.nodes)) for k in range(len(self.data.vehicles))]
-        self.y = self.model.binary_var_dict(indices, name=None)
+        data, model = self.data, self.model
+        valid_ijk = data.valid_ijk
+        node_count = len(data.nodes)
+        vehicle_count = len(data.vehicles)
+
+        self.x = model.binary_var_dict(valid_ijk, name=None)
+        indices = [(i, k) for i in range(node_count) for k in range(vehicle_count)]
+        self.y = model.binary_var_dict(indices, name=None)
         with inst.measure("restrições do modelo"):
             self._add_constraints()
-        variable_cost = self.model.sum(self.data.cost[key] * variable for key, variable in self.x.items())
-        fixed_cost = self.data.fixed_vehicle_cost * self.model.sum(self.y[0, k] for k in range(len(self.data.vehicles)))
-        self.model.minimize(variable_cost + fixed_cost)
-        return self.model
+        cost = data.cost
+        fixed_vehicle_cost = data.fixed_vehicle_cost
+        variable_cost = model.sum(cost[key] * variable for key, variable in self.x.items())
+        fixed_cost = fixed_vehicle_cost * model.sum(self.y[0, k] for k in range(vehicle_count))
+        model.minimize(variable_cost + fixed_cost)
+        return model
 
     def _add_constraints(self) -> None:
         data, model = self.data, self.model
-        vehicles = range(len(data.vehicles))
+        demand_kg = data.demand_kg
+        demand_m3 = data.demand_m3
+
+        vehicles_capacity_kg = {k: vehicle.capacity_kg for k, vehicle in enumerate(data.vehicles)}
+        vehicles_capacity_m3 = {k: vehicle.capacity_m3 for k, vehicle in enumerate(data.vehicles)}
+
+        vehicles = range(len(vehicles_capacity_kg))
         nodes = range(len(data.nodes))
 
         y = self.y
@@ -40,27 +53,35 @@ class CVRPBuilder:
         msum = model.sum
 
         with inst.measure("R1"):
-            model.add_constraints(msum(y[i, k] for k in vehicles) == 1 for i in data.demand_kg)
-        
+            model.add_constraints(msum(y[i, k] for k in vehicles) == 1 for i in demand_kg)
+
         with inst.measure("R2"):
-            model.add_constraint(msum(y[0, k] for k in vehicles) <= len(data.vehicles))
-        
+            model.add_constraint(msum(y[0, k] for k in vehicles) <= len(vehicles_capacity_kg))
+
         with inst.measure("R3"):
-            model.add_constraints(msum(x[i, j, k] for j in nodes if (i, j, k) in x) == y[i, k] for i in nodes for k in vehicles)
-        
+            model.add_constraints(
+                msum(x[i, j, k] for j in nodes if (i, j, k) in x) == y[i, k] for i in nodes for k in vehicles
+            )
+
         with inst.measure("R4"):
-            model.add_constraints(msum(x[i, j, k] for i in nodes if (i, j, k) in x) == y[j, k] for j in nodes for k in vehicles)
-        
+            model.add_constraints(
+                msum(x[i, j, k] for i in nodes if (i, j, k) in x) == y[j, k] for j in nodes for k in vehicles
+            )
+
         with inst.measure("R5"):
-            model.add_constraints(msum(data.demand_kg[i] * y[i, k] for i in data.demand_kg) <= data.vehicles[k].capacity_kg for k in vehicles)
-        
+            model.add_constraints(
+                msum(demand_kg[i] * y[i, k] for i in demand_kg) <= vehicles_capacity_kg[k] for k in vehicles
+            )
+
         with inst.measure("R6"):
-            model.add_constraints(msum(data.demand_m3[i] * y[i, k] for i in data.demand_m3) <= data.vehicles[k].capacity_m3 for k in vehicles)
-        
+            model.add_constraints(
+                msum(demand_m3[i] * y[i, k] for i in demand_m3) <= vehicles_capacity_m3[k] for k in vehicles
+            )
+
         with inst.measure("R7"):
             model.add_constraints(
-            msum(x[i, j, k] for i in subset for j in subset if (i, j, k) in x) <= len(subset) - 1
-            for size in range(2, len(data.demand_kg) + 1)
-            for subset in combinations(data.demand_kg, size)
-            for k in vehicles
-        )
+                msum(x[i, j, k] for i in subset for j in subset if (i, j, k) in x) <= len(subset) - 1
+                for size in range(2, len(demand_kg) + 1)
+                for subset in combinations(demand_kg, size)
+                for k in vehicles
+            )
