@@ -40,6 +40,9 @@ class CVRPBuilder:
         model.add_constraints(model.sum(self.x[i, j, k] for i in nodes if (i, j, k) in self.x) == self.y[j, k] for j in nodes for k in vehicles)
         model.add_constraints(model.sum(data.demand_kg[i] * self.y[i, k] for i in data.demand_kg) <= data.vehicles[k].capacity_kg for k in vehicles)
         model.add_constraints(model.sum(data.demand_m3[i] * self.y[i, k] for i in data.demand_m3) <= data.vehicles[k].capacity_m3 for k in vehicles)
-        for size in range(2, len(data.demand_kg) + 1):
-            for subset in combinations(data.demand_kg, size):
-                model.add_constraints(model.sum(self.x[i, j, k] for i in subset for j in subset if (i, j, k) in self.x) <= len(subset) - 1 for k in vehicles)
+        model.add_constraints(
+            model.sum(self.x[i, j, k] for i in subset for j in subset if (i, j, k) in self.x) <= len(subset) - 1
+            for size in range(2, len(data.demand_kg) + 1)
+            for subset in combinations(data.demand_kg, size)
+            for k in vehicles
+        )
