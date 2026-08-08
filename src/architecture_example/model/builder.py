@@ -219,14 +219,14 @@ class CVRPBuilderCplex:
         customer_count: int,
         vehicles: range,
         x: dict[tuple[int, int, int], int],
-    ) -> Iterable[tuple[SparsePair, str, float]]:
+    ) -> Iterable[tuple[Any, str, float]]:
         """Gera R7 em paralelo quando o custo de iniciar workers é amortizado."""
         vehicle_indices = tuple(vehicles)
         subset_count = (1 << customer_count) - customer_count - 1
         row_count = subset_count * len(vehicle_indices)
         if row_count < _MIN_PARALLEL_SUBTOUR_ROWS:
             return (
-                (SparsePair(ind=indices, val=[1.0] * len(indices)), "L", float(size - 1))
+                ([indices, [1.0] * len(indices)], "L", float(size - 1))
                 for size in range(2, customer_count + 1)
                 for subset in combinations(demand_kg, size)
                 for k in vehicle_indices
@@ -249,7 +249,7 @@ class CVRPBuilderCplex:
         vehicles: tuple[int, ...],
         x: dict[tuple[int, int, int], int],
         worker_count: int,
-    ) -> Iterable[tuple[SparsePair, str, float]]:
+    ) -> Iterable[tuple[Any, str, float]]:
         with ProcessPoolExecutor(
             max_workers=worker_count,
             initializer=initialize_subtour_worker,
@@ -271,14 +271,11 @@ class CVRPBuilderCplex:
                         pending.add(executor.submit(generate_subtour_indices, next_batch, vehicles))
 
                     indexed_rows = future.result()
-                    yield from (
-                        (SparsePair(ind=indices, val=[1.0] * len(indices)), "L", bound)
-                        for indices, bound in indexed_rows
-                    )
+                    yield from (([indices, [1.0] * len(indices)], "L", bound) for indices, bound in indexed_rows)
 
-    def _add_rows(self, rows: Iterable[tuple[SparsePair, str, float]]) -> None:
+    def _add_rows(self, rows: Iterable[tuple[Any, str, float]]) -> None:
         """Envia restrições ao CPLEX em lotes para limitar o uso de memória."""
-        expressions: list[SparsePair] = []
+        expressions: list[Any] = []
         senses: list[str] = []
         rhs: list[float] = []
         for expression, sense, bound in rows:
