@@ -1,8 +1,7 @@
 """Builders da formulação vehicle-flow de três índices."""
 
 from collections.abc import Iterable
-from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
-from itertools import batched, combinations, islice
+from itertools import combinations
 from typing import Any
 
 from cplex import Cplex, SparsePair
@@ -10,11 +9,6 @@ from docplex.mp.model import Model
 
 from architecture_example.domain import InstanceData
 from architecture_example.instrumentation import Instrumentation as inst
-from architecture_example.model.constraint_generation import generate_subtour_indices, initialize_subtour_worker
-
-MAX_CONSTRAINT_WORKERS = 4
-# Below this point, process startup and serialization exceed the saved CPU time.
-_MIN_PARALLEL_SUBTOUR_ROWS = 40_000
 
 
 class CVRPBuilderDocplex:
@@ -101,7 +95,7 @@ class CVRPBuilderDocplex:
 class CVRPBuilderCplex:
     """Constrói a mesma formulação diretamente pela API Python do CPLEX."""
 
-    _ROW_BATCH_SIZE = 10_000
+    _ROW_BATCH_SIZE = 2_000
 
     def __init__(self, data: InstanceData):
         self.data = data
@@ -117,7 +111,9 @@ class CVRPBuilderCplex:
         node_count = len(data.nodes)
         vehicle_count = len(data.vehicles)
 
-        x_keys = tuple(valid_ijk)
+        # Agrupa os arcos por veículo. Além de tornar a ordem determinística,
+        # isso permite reutilizar os índices de R7 entre veículos completos.
+        x_keys = tuple(sorted(valid_ijk, key=lambda key: (key[2], key[0], key[1])))
         y_keys = tuple((i, k) for i in range(node_count) for k in range(vehicle_count))
         self.x = {key: index for index, key in enumerate(x_keys)}
         self.y = {key: len(x_keys) + index for index, key in enumerate(y_keys)}
@@ -148,6 +144,9 @@ class CVRPBuilderCplex:
         vehicles = range(vehicle_count)
         nodes = range(node_count)
         x, y = self.x, self.y
+        arc_indices = [[[-1] * node_count for _ in nodes] for _ in vehicles]
+        for (i, j, k), index in x.items():
+            arc_indices[k][i][j] = index
 
         with inst.measure("R1"):
             self._add_rows(
@@ -171,7 +170,7 @@ class CVRPBuilderCplex:
                 )
                 for i in nodes
                 for k in vehicles
-                for indices in ([x[i, j, k] for j in nodes if (i, j, k) in x],)
+                for indices in ([index for index in arc_indices[k][i] if index >= 0],)
             )
 
         with inst.measure("R4"):
@@ -186,7 +185,7 @@ class CVRPBuilderCplex:
                 )
                 for j in nodes
                 for k in vehicles
-                for indices in ([x[i, j, k] for i in nodes if (i, j, k) in x],)
+                for indices in ([arc_indices[k][i][j] for i in nodes if arc_indices[k][i][j] >= 0],)
             )
 
         with inst.measure("R5"):
@@ -210,68 +209,32 @@ class CVRPBuilderCplex:
             )
 
         with inst.measure("R7"):
-            rows = self._subtour_rows(demand_kg, customer_count, vehicles, x)
-            self._add_rows(rows)
-
-    def _subtour_rows(
-        self,
-        demand_kg: dict[int, float],
-        customer_count: int,
-        vehicles: range,
-        x: dict[tuple[int, int, int], int],
-    ) -> Iterable[tuple[Any, str, float]]:
-        """Gera R7 em paralelo quando o custo de iniciar workers é amortizado."""
-        vehicle_indices = tuple(vehicles)
-        subset_count = (1 << customer_count) - customer_count - 1
-        row_count = subset_count * len(vehicle_indices)
-        if row_count < _MIN_PARALLEL_SUBTOUR_ROWS:
-            return (
-                ([indices, [1.0] * len(indices)], "L", float(size - 1))
-                for size in range(2, customer_count + 1)
-                for subset in combinations(demand_kg, size)
-                for k in vehicle_indices
-                for indices in ([x[i, j, k] for i in subset for j in subset if (i, j, k) in x],)
+            customer_nodes = tuple(demand_kg)
+            dense_customer_arcs = all(
+                arc_indices[k][i][j] >= 0 for k in vehicles for i in customer_nodes for j in customer_nodes if i != j
             )
-
-        subset_batch_size = max(1, self._ROW_BATCH_SIZE // len(vehicle_indices))
-        batch_count = -(-subset_count // subset_batch_size)
-        worker_count = min(MAX_CONSTRAINT_WORKERS, batch_count)
-        subset_batches = batched(
-            ((size, subset) for size in range(2, customer_count + 1) for subset in combinations(demand_kg, size)),
-            subset_batch_size,
-            strict=False,
-        )
-        return self._parallel_subtour_rows(subset_batches, vehicle_indices, x, worker_count)
-
-    @staticmethod
-    def _parallel_subtour_rows(
-        subset_batches: Iterable[tuple[tuple[int, tuple[int, ...]], ...]],
-        vehicles: tuple[int, ...],
-        x: dict[tuple[int, int, int], int],
-        worker_count: int,
-    ) -> Iterable[tuple[Any, str, float]]:
-        with ProcessPoolExecutor(
-            max_workers=worker_count,
-            initializer=initialize_subtour_worker,
-            initargs=(x,),
-        ) as executor:
-            batch_iterator = iter(subset_batches)
-            pending = {
-                executor.submit(generate_subtour_indices, batch, vehicles)
-                for batch in islice(batch_iterator, worker_count)
-            }
-            while pending:
-                completed, pending = wait(pending, return_when=FIRST_COMPLETED)
-                for future in completed:
-                    try:
-                        next_batch = next(batch_iterator)
-                    except StopIteration:
-                        pass
-                    else:
-                        pending.add(executor.submit(generate_subtour_indices, next_batch, vehicles))
-
-                    indexed_rows = future.result()
-                    yield from (([indices, [1.0] * len(indices)], "L", bound) for indices, bound in indexed_rows)
+            complete_vehicle_arcs = vehicle_count * node_count * (node_count - 1) == len(x)
+            if dense_customer_arcs and complete_vehicle_arcs:
+                base_matrix = arc_indices[0]
+                arcs_per_vehicle = len(x) // vehicle_count
+                rows = (
+                    ([indices, [1.0] * len(indices)], "L", float(size - 1))
+                    for size in range(2, customer_count + 1)
+                    for subset in combinations(customer_nodes, size)
+                    for base_indices in ([base_matrix[i][j] for i in subset for j in subset if i != j],)
+                    for vehicle_offset in range(0, len(x), arcs_per_vehicle)
+                    for indices in (base_indices if vehicle_offset == 0 else [index + vehicle_offset for index in base_indices],)
+                )
+            else:
+                rows = (
+                    ([indices, [1.0] * len(indices)], "L", float(size - 1))
+                    for size in range(2, customer_count + 1)
+                    for subset in combinations(customer_nodes, size)
+                    for k in vehicles
+                    for matrix in (arc_indices[k],)
+                    for indices in ([matrix[i][j] for i in subset for j in subset if matrix[i][j] >= 0],)
+                )
+            self._add_rows(rows)
 
     def _add_rows(self, rows: Iterable[tuple[Any, str, float]]) -> None:
         """Envia restrições ao CPLEX em lotes para limitar o uso de memória."""
