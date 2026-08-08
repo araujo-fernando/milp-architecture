@@ -142,11 +142,6 @@ class CVRPBuilderCplex:
         vehicles = range(vehicle_count)
         nodes = range(node_count)
         x, y = self.x, self.y
-        outgoing: dict[tuple[int, int], list[int]] = {}
-        incoming: dict[tuple[int, int], list[int]] = {}
-        for (i, j, k), variable in x.items():
-            outgoing.setdefault((i, k), []).append(variable)
-            incoming.setdefault((j, k), []).append(variable)
 
         with inst.measure("R1"):
             self._add_rows(
@@ -162,28 +157,30 @@ class CVRPBuilderCplex:
             self._add_rows(
                 (
                     SparsePair(
-                        ind=outgoing.get((i, k), []) + [y[i, k]],
-                        val=[1.0] * len(outgoing.get((i, k), [])) + [-1.0],
+                        ind=indices + [y[i, k]],
+                        val=[1.0] * len(indices) + [-1.0],
                     ),
                     "E",
                     0.0,
                 )
                 for i in nodes
                 for k in vehicles
+                for indices in ([x[i, j, k] for j in nodes if (i, j, k) in x],)
             )
 
         with inst.measure("R4"):
             self._add_rows(
                 (
                     SparsePair(
-                        ind=incoming.get((j, k), []) + [y[j, k]],
-                        val=[1.0] * len(incoming.get((j, k), [])) + [-1.0],
+                        ind=indices + [y[j, k]],
+                        val=[1.0] * len(indices) + [-1.0],
                     ),
                     "E",
                     0.0,
                 )
                 for j in nodes
                 for k in vehicles
+                for indices in ([x[i, j, k] for i in nodes if (i, j, k) in x],)
             )
 
         with inst.measure("R5"):
@@ -207,17 +204,18 @@ class CVRPBuilderCplex:
             )
 
         with inst.measure("R7"):
-            self._add_rows(self._subtour_rows(demand_kg, customer_count, vehicles, x))
-
-    @staticmethod
-    def _subtour_rows(
-        demand_kg: dict[int, float], customer_count: int, vehicles: range, x: dict[tuple[int, int, int], int]
-    ) -> Iterable[tuple[SparsePair, str, float]]:
-        for size in range(2, customer_count + 1):
-            for subset in combinations(demand_kg, size):
-                for k in vehicles:
-                    indices = [x[i, j, k] for i in subset for j in subset if (i, j, k) in x]
-                    yield SparsePair(ind=indices, val=[1.0] * len(indices)), "L", float(size - 1)
+            rows = (
+                (
+                    SparsePair(ind=indices, val=[1.0] * len(indices)),
+                    "L",
+                    float(size - 1),
+                )
+                for size in range(2, customer_count + 1)
+                for subset in combinations(demand_kg, size)
+                for k in vehicles
+                for indices in ([x[i, j, k] for i in subset for j in subset if (i, j, k) in x],)
+            )
+            self._add_rows(rows)
 
     def _add_rows(self, rows: Iterable[tuple[SparsePair, str, float]]) -> None:
         """Envia restrições ao CPLEX em lotes para limitar o uso de memória."""
