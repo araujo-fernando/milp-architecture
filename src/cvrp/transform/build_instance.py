@@ -5,8 +5,8 @@ from __future__ import annotations
 from math import asin, cos, radians, sin, sqrt
 from typing import Any
 
-from architecture_example.domain import InstanceData, Vehicle
-from architecture_example.instrumentation import Instrumentation as inst
+from cvrp.domain import InstanceData, Vehicle
+from cvrp.instrumentation import Instrumentation as inst
 
 
 class InputError(ValueError):

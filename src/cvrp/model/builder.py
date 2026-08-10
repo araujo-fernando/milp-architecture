@@ -5,9 +5,9 @@ from typing import Any
 
 from docplex.mp.model import Model
 
-from architecture_example.domain import InstanceData
-from architecture_example.instrumentation import Instrumentation as inst
-from architecture_example.solve import Solver
+from cvrp.domain import InstanceData
+from cvrp.instrumentation import Instrumentation as inst
+from cvrp.solve import Solver
 
 
 class CVRPBuilderDocplex:

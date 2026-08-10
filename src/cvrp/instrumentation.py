@@ -35,7 +35,7 @@ class _ExecutionMeasurement:
 class Instrumentation:
     """Ponto único para logs e medição de duração da aplicação."""
 
-    _LOGGER_NAME = "architecture_example"
+    _LOGGER_NAME = "cvrp"
 
     @classmethod
     def configure(cls, log_path: Path = Path("execution.log"), *, force: bool = False) -> None:

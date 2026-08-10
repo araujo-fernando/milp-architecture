@@ -1,5 +1,5 @@
 [project]
-name = "architecture-example"
+name = "cvrp"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -21,7 +21,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "--cov=architecture_example --cov-report=term-missing --cov-fail-under=80"
+addopts = "--cov=cvrp --cov-report=term-missing --cov-fail-under=80"
 testpaths = ["tests"]
 
 [tool.ruff]
@@ -32,7 +32,7 @@ target-version = "py312"
 select = ["F", "I", "B", "UP"]
 
 [project.scripts]
-architecture-example = "architecture_example:main"
+cvrp = "cvrp:main"
 
 [build-system]
 requires = ["uv_build>=0.11.17,<0.12.0"]

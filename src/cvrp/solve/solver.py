@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from cplex import Cplex
 
-from architecture_example.instrumentation import Instrumentation as inst
+from cvrp.instrumentation import Instrumentation as inst
 
 type SparseExpression = list[Sequence[int] | Sequence[float]]
 type SparseRow = tuple[SparseExpression, str, float]

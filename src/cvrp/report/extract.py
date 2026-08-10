@@ -4,9 +4,9 @@ from datetime import datetime
 from hashlib import sha256
 from typing import Any
 
-from architecture_example.domain import InstanceData
-from architecture_example.instrumentation import Instrumentation as inst
-from architecture_example.model import CVRPBuilderCplex, CVRPBuilderDocplex
+from cvrp.domain import InstanceData
+from cvrp.instrumentation import Instrumentation as inst
+from cvrp.model import CVRPBuilderCplex, CVRPBuilderDocplex
 
 
 class SolutionReporter:

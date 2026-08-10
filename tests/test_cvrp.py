@@ -4,13 +4,13 @@ import json
 
 import pytest
 
-from architecture_example import __main__ as cli
-from architecture_example.instrumentation import Instrumentation as inst
-from architecture_example.model import CVRPBuilderCplex, CVRPBuilderDocplex
-from architecture_example.pipeline import CVRPPipeline
-from architecture_example.solve import LinearConstraint, Solver
-from architecture_example.transform import InputError, InstanceTransformer
 from benchmark import create_input
+from cvrp import __main__ as cli
+from cvrp.instrumentation import Instrumentation as inst
+from cvrp.model import CVRPBuilderCplex, CVRPBuilderDocplex
+from cvrp.pipeline import CVRPPipeline
+from cvrp.solve import LinearConstraint, Solver
+from cvrp.transform import InputError, InstanceTransformer
 
 
 @pytest.fixture
@@ -197,9 +197,9 @@ def test_pipeline_orchestrates_layers(raw: dict, monkeypatch: pytest.MonkeyPatch
         def extract(self) -> dict[str, str]:
             return {"ok": self.args[0]}
 
-    monkeypatch.setattr("architecture_example.pipeline.InstanceTransformer", Transformer)
-    monkeypatch.setattr("architecture_example.pipeline.CVRPBuilderDocplex", Builder)
-    monkeypatch.setattr("architecture_example.pipeline.SolutionReporter", Reporter)
+    monkeypatch.setattr("cvrp.pipeline.InstanceTransformer", Transformer)
+    monkeypatch.setattr("cvrp.pipeline.CVRPBuilderDocplex", Builder)
+    monkeypatch.setattr("cvrp.pipeline.SolutionReporter", Reporter)
 
     assert CVRPPipeline(raw, "CD").run() == {"ok": "data"}
 
@@ -221,7 +221,7 @@ def test_cli_keeps_scenario_artifacts_together(
             return {"solved": True}
 
     monkeypatch.setattr(cli, "CVRPPipeline", Pipeline)
-    monkeypatch.setattr("sys.argv", ["architecture-example", str(scenario), "CD", "--date", "2026-08-07", *extra_args])
+    monkeypatch.setattr("sys.argv", ["cvrp", str(scenario), "CD", "--date", "2026-08-07", *extra_args])
     cli.main()
 
     assert captured == {"raw": {"input": True}, "cd": "CD", "date": "2026-08-07", "cplex_log": cplex_log}

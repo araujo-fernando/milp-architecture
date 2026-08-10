@@ -7,8 +7,8 @@ import json
 from math import cos, pi, sin
 from pathlib import Path
 
-from architecture_example import CVRPPipeline
-from architecture_example.instrumentation import Instrumentation as inst
+from cvrp import CVRPPipeline
+from cvrp.instrumentation import Instrumentation as inst
 
 
 def parse_args() -> argparse.Namespace:
