@@ -136,6 +136,31 @@ def test_solver_builds_and_returns_runtime_independent_solution() -> None:
     assert solution.value(variable) == pytest.approx(1.0)
 
 
+def test_solver_supports_integer_and_continuous_variables_with_bounds() -> None:
+    solver = Solver(problem_name="variable-types")
+    (integer,) = solver.add_integer_variables([1.0], [-2.0], [3.0])
+    (continuous,) = solver.add_continuous_variables([1.0], [-2.0], [3.0])
+    solver.minimize()
+    solver.add_linear_constraints(
+        (
+            LinearConstraint([integer], [1.0], "G", 1.5),
+            LinearConstraint([continuous], [1.0], "G", 1.5),
+        )
+    )
+
+    solution = solver.solve()
+
+    assert solution.value(integer) == pytest.approx(2.0)
+    assert solution.value(continuous) == pytest.approx(1.5)
+
+
+def test_solver_rejects_bounds_with_wrong_size() -> None:
+    solver = Solver(problem_name="invalid-bounds")
+
+    with pytest.raises(ValueError, match="lower_bounds"):
+        solver.add_continuous_variables([1.0, 2.0], [0.0], [1.0, 1.0])
+
+
 def test_solver_raises_clear_error_for_infeasible_model() -> None:
     solver = Solver(problem_name="infeasible")
     (variable,) = solver.add_binary_variables([0.0])
