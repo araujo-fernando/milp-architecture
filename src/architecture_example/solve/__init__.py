@@ -1,5 +1,5 @@
-"""Execução do solver."""
+"""Execução e modelagem pelo solver."""
 
-from .solver import CVRPSolver
+from .solver import LinearConstraint, Solution, Solver
 
-__all__ = ["CVRPSolver"]
+__all__ = ["LinearConstraint", "Solution", "Solver"]

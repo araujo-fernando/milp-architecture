@@ -1,14 +1,13 @@
 """Builders da formulação vehicle-flow de três índices."""
 
-from collections.abc import Iterable
 from itertools import combinations
 from typing import Any
 
-from cplex import Cplex, SparsePair
 from docplex.mp.model import Model
 
 from architecture_example.domain import InstanceData
 from architecture_example.instrumentation import Instrumentation as inst
+from architecture_example.solve import Solver
 
 
 class CVRPBuilderDocplex:
@@ -93,44 +92,33 @@ class CVRPBuilderDocplex:
 
 
 class CVRPBuilderCplex:
-    """Constrói a mesma formulação diretamente pela API Python do CPLEX."""
+    """Constrói a formulação CPLEX pela fachada genérica de solver."""
 
-    _ROW_BATCH_SIZE = 2_000
-
-    def __init__(self, data: InstanceData):
+    def __init__(self, data: InstanceData, *, cplex_log: bool = False):
         self.data = data
-        self.model = Cplex()
-        self.model.set_problem_name("cvrp")
+        self.solver = Solver(problem_name="cvrp", cplex_log=cplex_log)
         self.x: dict[tuple[int, int, int], int] = {}
         self.y: dict[tuple[int, int], int] = {}
 
     @inst.log_execution_time
-    def build(self) -> Cplex:
-        data, model = self.data, self.model
+    def build(self) -> Solver:
+        data = self.data
         valid_ijk = data.valid_ijk
         node_count = len(data.nodes)
         vehicle_count = len(data.vehicles)
 
-        # Agrupa os arcos por veículo. Além de tornar a ordem determinística,
-        # isso permite reutilizar os índices de R7 entre veículos completos.
+        # Agrupa os arcos por veículo para manter a ordem dos índices determinística.
         x_keys = tuple(sorted(valid_ijk, key=lambda key: (key[2], key[0], key[1])))
         y_keys = tuple((i, k) for i in range(node_count) for k in range(vehicle_count))
-        self.x = {key: index for index, key in enumerate(x_keys)}
-        self.y = {key: len(x_keys) + index for index, key in enumerate(y_keys)}
-
         objective = [data.cost[key] for key in x_keys] + [data.fixed_vehicle_cost if i == 0 else 0.0 for i, _ in y_keys]
-        variable_count = len(objective)
-        model.variables.add(
-            obj=objective,
-            lb=[0.0] * variable_count,
-            ub=[1.0] * variable_count,
-            types="B" * variable_count,
-        )
-        model.objective.set_sense(model.objective.sense.minimize)
+        indices = self.solver.add_binary_variables(objective)
+        self.x = {key: indices[index] for index, key in enumerate(x_keys)}
+        self.y = {key: indices[len(x_keys) + index] for index, key in enumerate(y_keys)}
+        self.solver.minimize()
 
         with inst.measure("restrições do modelo"):
             self._add_constraints()
-        return model
+        return self.solver
 
     def _add_constraints(self) -> None:
         data = self.data
@@ -149,24 +137,19 @@ class CVRPBuilderCplex:
             arc_indices[k][i][j] = index
 
         with inst.measure("R1"):
-            self._add_rows(
-                (SparsePair(ind=[y[i, k] for k in vehicles], val=[1.0] * vehicle_count), "E", 1.0) for i in demand_kg
+            self.solver.add_sparse_rows(
+                ([[y[i, k] for k in vehicles], [1.0] * vehicle_count], "E", 1.0) for i in demand_kg
             )
 
         with inst.measure("R2"):
-            self._add_rows(
-                ((SparsePair(ind=[y[0, k] for k in vehicles], val=[1.0] * vehicle_count), "L", float(vehicle_count)),)
+            self.solver.add_sparse_rows(
+                (([[y[0, k] for k in vehicles], [1.0] * vehicle_count], "L", float(vehicle_count)),)
             )
 
         with inst.measure("R3"):
-            self._add_rows(
+            self.solver.add_sparse_rows(
                 (
-                    SparsePair(
-                        ind=indices + [y[i, k]],
-                        val=[1.0] * len(indices) + [-1.0],
-                    ),
-                    "E",
-                    0.0,
+                    ([indices + [y[i, k]], [1.0] * len(indices) + [-1.0]], "E", 0.0)
                 )
                 for i in nodes
                 for k in vehicles
@@ -174,14 +157,9 @@ class CVRPBuilderCplex:
             )
 
         with inst.measure("R4"):
-            self._add_rows(
+            self.solver.add_sparse_rows(
                 (
-                    SparsePair(
-                        ind=indices + [y[j, k]],
-                        val=[1.0] * len(indices) + [-1.0],
-                    ),
-                    "E",
-                    0.0,
+                    ([indices + [y[j, k]], [1.0] * len(indices) + [-1.0]], "E", 0.0)
                 )
                 for j in nodes
                 for k in vehicles
@@ -189,21 +167,17 @@ class CVRPBuilderCplex:
             )
 
         with inst.measure("R5"):
-            self._add_rows(
+            self.solver.add_sparse_rows(
                 (
-                    SparsePair(ind=[y[i, k] for i in demand_kg], val=list(demand_kg.values())),
-                    "L",
-                    vehicles_capacity_kg[k],
+                    ([[y[i, k] for i in demand_kg], list(demand_kg.values())], "L", vehicles_capacity_kg[k])
                 )
                 for k in vehicles
             )
 
         with inst.measure("R6"):
-            self._add_rows(
+            self.solver.add_sparse_rows(
                 (
-                    SparsePair(ind=[y[i, k] for i in demand_m3], val=list(demand_m3.values())),
-                    "L",
-                    vehicles_capacity_m3[k],
+                    ([[y[i, k] for i in demand_m3], list(demand_m3.values())], "L", vehicles_capacity_m3[k])
                 )
                 for k in vehicles
             )
@@ -234,19 +208,4 @@ class CVRPBuilderCplex:
                     for matrix in (arc_indices[k],)
                     for indices in ([matrix[i][j] for i in subset for j in subset if matrix[i][j] >= 0],)
                 )
-            self._add_rows(rows)
-
-    def _add_rows(self, rows: Iterable[tuple[Any, str, float]]) -> None:
-        """Envia restrições ao CPLEX em lotes para limitar o uso de memória."""
-        expressions: list[Any] = []
-        senses: list[str] = []
-        rhs: list[float] = []
-        for expression, sense, bound in rows:
-            expressions.append(expression)
-            senses.append(sense)
-            rhs.append(bound)
-            if len(expressions) == self._ROW_BATCH_SIZE:
-                self.model.linear_constraints.add(lin_expr=expressions, senses="".join(senses), rhs=rhs)
-                expressions, senses, rhs = [], [], []
-        if expressions:
-            self.model.linear_constraints.add(lin_expr=expressions, senses="".join(senses), rhs=rhs)
+            self.solver.add_sparse_rows(rows)

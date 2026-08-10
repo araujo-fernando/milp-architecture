@@ -8,7 +8,7 @@ from architecture_example import __main__ as cli
 from architecture_example.instrumentation import Instrumentation as inst
 from architecture_example.model import CVRPBuilderCplex, CVRPBuilderDocplex
 from architecture_example.pipeline import CVRPPipeline
-from architecture_example.solve import CVRPSolver
+from architecture_example.solve import LinearConstraint, Solver
 from architecture_example.transform import InputError, InstanceTransformer
 from benchmark import create_input
 
@@ -70,10 +70,20 @@ def test_cplex_builder_creates_the_same_model_size(raw: dict) -> None:
     data = InstanceTransformer(raw, "CD").transform()
     docplex_model = CVRPBuilderDocplex(data).build()
     cplex_builder = CVRPBuilderCplex(data)
-    cplex_model = cplex_builder.build()
+    cplex_builder.build()
 
-    assert cplex_model.variables.get_num() == docplex_model.number_of_variables
-    assert cplex_model.linear_constraints.get_num() == docplex_model.number_of_constraints
+    assert cplex_builder.solver.variable_count == docplex_model.number_of_variables
+    assert cplex_builder.solver.constraint_count == docplex_model.number_of_constraints
+
+
+def test_cplex_builder_adds_explicit_dfj_rows_for_complete_graph() -> None:
+    data = InstanceTransformer(create_input(customers=3, vehicles=2), "CD-BENCH").transform()
+    builder = CVRPBuilderCplex(data)
+    builder.build()
+
+    # R7 has one row for every non-singleton customer subset and vehicle:
+    # (C(3, 2) + C(3, 3)) * 2 = 8. The remaining formulation rows total 24.
+    assert builder.solver.constraint_count == 32
 
 
 def test_pipeline_runs_with_cplex_builder() -> None:
@@ -113,20 +123,31 @@ def test_unknown_or_inactive_depot_is_rejected(raw: dict) -> None:
         InstanceTransformer(raw, "CD").transform()
 
 
-def test_solver_returns_solution_or_clear_error() -> None:
-    class Model:
-        def solve(self, **kwargs: object) -> object:
-            assert kwargs == {"log_output": False}
-            return "solution"
+def test_solver_builds_and_returns_runtime_independent_solution() -> None:
+    solver = Solver(problem_name="test")
+    (variable,) = solver.add_binary_variables([2.0])
+    solver.minimize()
+    solver.add_linear_constraints((LinearConstraint([variable], [1.0], "G", 1.0),))
 
-    assert CVRPSolver(Model()).solve() == "solution"
+    solution = solver.solve()
 
-    class InfeasibleModel:
-        def solve(self, **_: object) -> None:
-            return None
+    assert solution.status
+    assert solution.objective_value == pytest.approx(2.0)
+    assert solution.value(variable) == pytest.approx(1.0)
 
+
+def test_solver_raises_clear_error_for_infeasible_model() -> None:
+    solver = Solver(problem_name="infeasible")
+    (variable,) = solver.add_binary_variables([0.0])
+    solver.minimize()
+    solver.add_linear_constraints(
+        (
+            LinearConstraint([variable], [1.0], "L", 0.0),
+            LinearConstraint([variable], [1.0], "G", 1.0),
+        )
+    )
     with pytest.raises(RuntimeError, match="Solver"):
-        CVRPSolver(InfeasibleModel()).solve()
+        solver.solve()
 
 
 def test_instrumentation_times_blocks_and_decorated_calls(tmp_path) -> None:
@@ -151,6 +172,11 @@ def test_pipeline_orchestrates_layers(raw: dict, monkeypatch: pytest.MonkeyPatch
             number_of_variables = 1
             number_of_constraints = 2
 
+            @staticmethod
+            def solve(**kwargs: object) -> str:
+                assert kwargs == {"log_output": False}
+                return "solution"
+
         def __init__(self, data: object) -> None:
             self.data = data
 
@@ -164,13 +190,6 @@ def test_pipeline_orchestrates_layers(raw: dict, monkeypatch: pytest.MonkeyPatch
         def transform(self) -> str:
             return "data"
 
-    class Solver:
-        def __init__(self, _: object, *, cplex_log: bool = False) -> None:
-            self.cplex_log = cplex_log
-
-        def solve(self) -> str:
-            return "solution"
-
     class Reporter:
         def __init__(self, *args: object) -> None:
             self.args = args
@@ -180,7 +199,6 @@ def test_pipeline_orchestrates_layers(raw: dict, monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr("architecture_example.pipeline.InstanceTransformer", Transformer)
     monkeypatch.setattr("architecture_example.pipeline.CVRPBuilderDocplex", Builder)
-    monkeypatch.setattr("architecture_example.pipeline.CVRPSolver", Solver)
     monkeypatch.setattr("architecture_example.pipeline.SolutionReporter", Reporter)
 
     assert CVRPPipeline(raw, "CD").run() == {"ok": "data"}

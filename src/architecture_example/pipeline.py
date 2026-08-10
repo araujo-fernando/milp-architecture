@@ -5,7 +5,6 @@ from typing import Any, Literal
 from .instrumentation import Instrumentation as inst
 from .model import CVRPBuilderCplex, CVRPBuilderDocplex
 from .report import SolutionReporter
-from .solve import CVRPSolver
 from .transform import InstanceTransformer
 
 
@@ -23,16 +22,21 @@ class CVRPPipeline:
     def run(self) -> dict[str, Any]:
         """Executa Transform → Build → Solve → Extract."""
         data = self.transformer.transform()
-        builder = CVRPBuilderCplex(data) if self.builder == "cplex" else CVRPBuilderDocplex(data)
+        builder = CVRPBuilderCplex(data, cplex_log=self.cplex_log) if self.builder == "cplex" else CVRPBuilderDocplex(data)
         with inst.measure("construção do modelo") as build_measurement:
             builder.build()
-        variable_count = builder.model.variables.get_num() if self.builder == "cplex" else builder.model.number_of_variables
-        constraint_count = builder.model.linear_constraints.get_num() if self.builder == "cplex" else builder.model.number_of_constraints
+        variable_count = builder.solver.variable_count if self.builder == "cplex" else builder.model.number_of_variables
+        constraint_count = builder.solver.constraint_count if self.builder == "cplex" else builder.model.number_of_constraints
         inst.info(
             "Modelo construído com %d variáveis e %d restrições",
             variable_count,
             constraint_count,
         )
         with inst.measure("resolução do modelo") as solve_measurement:
-            solution = CVRPSolver(builder.model, cplex_log=self.cplex_log).solve()
+            if self.builder == "cplex":
+                solution = builder.solver.solve()
+            else:
+                solution = builder.model.solve(log_output=self.cplex_log)
+                if solution is None:
+                    raise RuntimeError("Solver não encontrou solução; configure um runtime CPLEX compatível")
         return SolutionReporter(data, builder, solution, build_measurement.elapsed_seconds, solve_measurement.elapsed_seconds).extract()

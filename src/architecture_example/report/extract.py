@@ -25,13 +25,13 @@ class SolutionReporter:
         if isinstance(self.builder, CVRPBuilderCplex):
             values = {}
             for key, index in self.builder.x.items():
-                value = self.solution.solution.get_values(index)
+                value = self.solution.value(index)
                 if value != 0.0:
                     values[key] = value
-            status = self.solution.solution.get_status_string()
-            objective = self.solution.solution.get_objective_value()
-            variable_count = self.builder.model.variables.get_num()
-            constraint_count = self.builder.model.linear_constraints.get_num()
+            status = self.solution.status
+            objective = self.solution.objective_value
+            variable_count = self.builder.solver.variable_count
+            constraint_count = self.builder.solver.constraint_count
         else:
             values = self.solution.get_value_dict(self.builder.x, keep_zeros=False)
             status = str(self.solution.solve_status)
