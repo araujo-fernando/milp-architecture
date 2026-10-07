@@ -2,6 +2,12 @@
 
 A ideia é que este arquivo seja o que um ERP/WMS realmente exportaria: vocabulário de negócio, entidades normalizadas em listas separadas, unidades inconsistentes e **nenhum** conjunto $V$, $A$, $K$ ou parâmetro $c_{ij}$ pronto. Todo o trabalho de virar modelo linear fica na camada Transform.
 
+O exemplo inclui campos extras de ERP/WMS. O leitor utiliza os contratos de
+`domain/raw.py`; janelas de tempo, velocidade, descarga, raio de atendimento e
+`restricao_centro_urbano` não são restrições deste CVRP. Bloqueios de circulação
+devem ser informados em `restricoes_circulacao`. A arquitetura e a formulação
+executadas estão em [architecture.md](architecture.md) e [model.md](model.md).
+
 ```json
 {
   "metadata": {
@@ -127,9 +133,9 @@ A ideia é que este arquivo seja o que um ERP/WMS realmente exportaria: vocabul�
 | $N$ | `clientes` ∩ `pedidos` | join + filtro por `cd_atendimento`, `status`, `data_entrega` |
 | $K$ | `frota.disponibilidade` | expandir `quantidade - em_manutencao` em veículos individuais |
 | $q_i$ | `pedidos.itens` × `catalogo_produtos` | agregar por cliente: $q_i = \sum_{\text{itens}} \text{caixas} \times \text{peso\_kg\_caixa}$ |
-| $Q$ | `frota.tipos.capacidade_kg` | escolher a dimensão *binding* (kg vs m³) ou modelar as duas |
+| $Q_k^{kg}$, $Q_k^{m3}$ | `frota.tipos.capacidade_kg`, `capacidade_m3` | modelar ambas por veículo |
 | $c_{ij}$ | `latitude`/`longitude` | haversine → km → × `custo_por_km` × `custo_km_relativo[tipo(k)]` |
-| $A$ (esparso) | derivado | $k$-vizinhos + `raio_maximo_atendimento_km` + `restricoes_circulacao` |
+| $A_k$ (esparso) | derivado por split | circulação; no modo `provided_only`, somente arcos de `distancias_conhecidas` |
 
 Note que $c_{ij}$ na formulação de três índices vira, na prática, $c_{ijk}$ — o custo depende do tipo do veículo. Isso é comum e não muda a estrutura do modelo, só o parâmetro.
 
@@ -141,13 +147,15 @@ Note que $c_{ij}$ na formulação de três índices vira, na prática, $c_{ijk}$
 2. **Múltiplos pedidos por cliente** (C-001, C-003, C-004) — exige agregação; um erro aqui gera $q_i$ subestimado silenciosamente.
 3. **Pedido duplicado** (`PD-88127` aparece duas vezes) — deduplicar por `numero` antes de somar, senão C-005 dobra de demanda.
 4. **Filtros de status e data** — `PD-88123` é cancelado, `PD-88125` é de outro dia. C-004 tem um pedido válido e um inválido.
-5. **Integridade referencial** — `C-999` aparece em pedido mas não no cadastro. Erro fatal ou warning com descarte? Decisão de política, não de código.
-6. **Coordenada nula** — C-006 tem pedido válido mas não pode entrar no grafo. Bloqueia a instância inteira ou exclui o cliente?
+5. **Integridade referencial** — `C-999` aparece em pedido mas não no cadastro. O template descarta esse pedido com diagnóstico; SKU ausente é erro.
+6. **Coordenada nula** — C-006 é descartado com diagnóstico. O depósito precisa ter coordenadas válidas.
 7. **Unidades** — demanda em caixas, capacidade em kg. Conversão obrigatória via catálogo; SKU ausente no catálogo é falha de validação.
-8. **Duas capacidades** (kg e m³) — o modelo canônico tem um único $Q$. Ou você escolhe a restritiva, ou duplica a restrição (5). Decisão de modelagem que o dado força.
+8. **Duas capacidades** (kg e m³) — ambas são impostas no modelo e verificadas simultaneamente para cada veículo elegível.
 9. **Frota efetiva ≠ declarada** — `quantidade - em_manutencao` define $|K|$; ignorar isso torna o modelo otimista.
 10. **Arcos bloqueados** — `restricoes_circulacao` remove combinações $(i,j,k)$ específicas. É exatamente o `valid_ijk` esparso: o TOCO não pode chegar em C-004, então $x_{i,\text{C-004},k}$ nem existe para $k$ do tipo TOCO.
 11. **Override de distância** — `distancias_conhecidas` sobrescreve o haversine e é **assimétrico** (31.4 vs 33.9). Se sua estrutura assume simetria, quebra aqui.
-12. **Viabilidade** — vale checar $\sum_i q_i \le \sum_k Q_k$ e $\max_i q_i \le \max_k Q_k$ antes de construir o modelo. Detectar inviabilidade na validação custa microssegundos; descobrir pelo solver custa minutos.
+12. **Viabilidade** — checar demandas totais e capacidade individual conjunta em veículos autorizados com ida/retorno antes do build. São condições necessárias, não prova de viabilidade de packing ou de roteamento.
 
-O ponto 10 é o que torna este JSON interessante para a arquitetura: `valid_ijk` deixa de ser um produto cartesiano e passa a ser um dado derivado de três fontes independentes (raio, vizinhança, restrição regulatória) — que é exatamente o cenário em que o `frozenset` de tuplas se paga contra a matriz densa.
+Os arcos válidos são materializados em ordem determinística depois da
+clusterização, com adjacências por nó/veículo. O grafo pode ser esparso por
+circulação ou por dados direcionais fornecidos; não há matriz densa de índices.

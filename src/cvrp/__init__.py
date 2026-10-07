@@ -1,9 +1,19 @@
 """Pipeline enxuto para construir e resolver instâncias CVRP."""
 
-from .domain import InstanceData
+from .config import PipelineConfig
+from .domain import InstanceData, ProblemData, Route, RoutingSolution
 from .model import CVRPBuilderCplex, CVRPBuilderDocplex
 from .pipeline import CVRPPipeline
-from .solve import Solver
 from .transform import InstanceTransformer
 
-__all__ = ["CVRPBuilderCplex", "CVRPBuilderDocplex", "CVRPPipeline", "InstanceData", "InstanceTransformer", "Solver"]
+__all__ = [
+    "CVRPBuilderCplex",
+    "CVRPBuilderDocplex",
+    "CVRPPipeline",
+    "InstanceData",
+    "InstanceTransformer",
+    "PipelineConfig",
+    "ProblemData",
+    "Route",
+    "RoutingSolution",
+]

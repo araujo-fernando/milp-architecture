@@ -1,5 +1,1 @@
-"""Execução e modelagem pelo solver."""
-
-from .solver import LinearConstraint, Solution, Solver
-
-__all__ = ["LinearConstraint", "Solution", "Solver"]
+"""Orquestração das FOs e dos processos; os modelos usam APIs nativas."""

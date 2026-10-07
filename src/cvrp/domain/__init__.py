@@ -1,5 +1,17 @@
-"""Tipos imutáveis que representam uma instância já validada."""
+"""Contratos tipados usados nas etapas do pipeline."""
 
-from .instance import InstanceData, Vehicle
+from .instance import Customer, InstanceData, Location, ProblemData, ProblemSplit, TravelData, Vehicle
+from .results import Diagnostic, Route, RoutingSolution
 
-__all__ = ["InstanceData", "Vehicle"]
+__all__ = [
+    "Customer",
+    "Diagnostic",
+    "InstanceData",
+    "Location",
+    "ProblemData",
+    "ProblemSplit",
+    "Route",
+    "RoutingSolution",
+    "TravelData",
+    "Vehicle",
+]

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Self, cast
+from typing import Any, Literal, Self, cast
 
 from rich.logging import RichHandler
 
@@ -26,7 +26,7 @@ class _ExecutionMeasurement:
         self._started_at = perf_counter()
         return self
 
-    def __exit__(self, *_: object) -> bool:
+    def __exit__(self, *_: object) -> Literal[False]:
         self.elapsed_seconds = perf_counter() - self._started_at
         Instrumentation.info("Finalizando %s em %.4f segundos", self.name, self.elapsed_seconds)
         return False
@@ -68,23 +68,23 @@ class Instrumentation:
         return logger
 
     @classmethod
-    def debug(cls, message: str, *args: object, **kwargs: object) -> None:
+    def debug(cls, message: str, *args: object, **kwargs: Any) -> None:
         cls._logger().debug(message, *args, **kwargs)
 
     @classmethod
-    def info(cls, message: str, *args: object, **kwargs: object) -> None:
+    def info(cls, message: str, *args: object, **kwargs: Any) -> None:
         cls._logger().info(message, *args, **kwargs)
 
     @classmethod
-    def warning(cls, message: str, *args: object, **kwargs: object) -> None:
+    def warning(cls, message: str, *args: object, **kwargs: Any) -> None:
         cls._logger().warning(message, *args, **kwargs)
 
     @classmethod
-    def error(cls, message: str, *args: object, **kwargs: object) -> None:
+    def error(cls, message: str, *args: object, **kwargs: Any) -> None:
         cls._logger().error(message, *args, **kwargs)
 
     @classmethod
-    def exception(cls, message: str, *args: object, **kwargs: object) -> None:
+    def exception(cls, message: str, *args: object, **kwargs: Any) -> None:
         cls._logger().exception(message, *args, **kwargs)
 
     @classmethod

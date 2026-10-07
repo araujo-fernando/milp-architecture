@@ -1,7 +1,7 @@
 [project]
 name = "cvrp"
 version = "0.1.0"
-description = "Add your description here"
+description = "Template de pipeline de otimização CVRP com CPLEX e Docplex"
 readme = "README.md"
 authors = [
     { name = "Fernando Araujo", email = "contato@fernando.bhz.br" }
@@ -11,6 +11,8 @@ dependencies = [
     "cplex==22.2.0.0",
     "docplex>=2.32.264",
     "rich>=13.0",
+    "scikit-learn>=1.6,<2",
+    "xlsxwriter>=3.2,<4",
 ]
 
 [dependency-groups]
@@ -18,21 +20,32 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "ruff>=0.12",
+    "mypy>=1.15",
 ]
 
 [tool.pytest.ini_options]
 addopts = "--cov=cvrp --cov-report=term-missing --cov-fail-under=80"
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.ruff]
 line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["F", "I", "B", "UP"]
+select = ["F", "I", "B", "UP", "C901"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 9
+
+[tool.mypy]
+files = ["src/cvrp"]
+ignore_missing_imports = true
+check_untyped_defs = true
+disallow_untyped_defs = true
 
 [project.scripts]
-cvrp = "cvrp:main"
+cvrp = "cvrp.__main__:main"
 
 [build-system]
 requires = ["uv_build>=0.11.17,<0.12.0"]
